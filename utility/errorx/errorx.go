@@ -1,6 +1,7 @@
 package errorx
 
 import (
+	"github.com/gogf/gf/v2/errors/gcode"
 	"github.com/gogf/gf/v2/errors/gerror"
 )
 
@@ -70,4 +71,9 @@ var (
 
 	// ErrInvalidToken indicates JWT token has invalid. Can't refresh.
 	ErrInvalidToken = gerror.New("token is invalid")
+)
+
+var (
+	// ErrRecordNotFound record not found
+	ErrRecordNotFound = gerror.NewCode(gcode.New(10001, "record not found", nil))
 )

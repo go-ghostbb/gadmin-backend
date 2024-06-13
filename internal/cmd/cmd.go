@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"gadmin-backend/internal/consts"
+	"gadmin-backend/internal/controller/role"
 	"gadmin-backend/internal/controller/system"
 	"gadmin-backend/internal/service"
 	"github.com/gogf/gf/v2/net/goai"
@@ -29,7 +30,12 @@ func mainFunc(ctx context.Context, parser *gcmd.Parser) (err error) {
 	oaiSetting()
 
 	// bind
-	baseGroup() // base
+	baseGroup() // base => prefix: /
+	roleGroup() // role => prefix: /role
+
+	// TODO: user
+
+	// TODO: menu
 
 	s.Run()
 	return nil
@@ -67,6 +73,21 @@ func baseGroup() {
 		priv.Bind(
 			system.NewV1().Logout,
 			system.NewV1().UserInfo,
+		)
+	})
+}
+
+func roleGroup() {
+	var (
+		s = g.Server()
+	)
+
+	s.Group("/role", func(group *ghttp.RouterGroup) {
+		// default, cors, auth
+		group.Middleware(ghttp.MiddlewareHandlerResponse, service.Middleware().CORS, service.Middleware().Auth)
+
+		group.Bind(
+			role.NewV1(),
 		)
 	})
 }
