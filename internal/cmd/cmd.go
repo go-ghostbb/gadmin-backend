@@ -73,6 +73,7 @@ func baseGroup() {
 		priv.Bind(
 			system.NewV1().Logout,
 			system.NewV1().UserInfo,
+			system.NewV1().RefreshToken,
 		)
 	})
 }

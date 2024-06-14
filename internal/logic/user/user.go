@@ -48,11 +48,35 @@ func (s *sUser) GetUserByUsernamePassword(ctx context.Context, in model.UserLogi
 	return
 }
 
-// GetUserInfo 獲取使用者資訊
-func (s *sUser) GetUserInfo(ctx context.Context) (out *model.UserInfoOutput) {
+// GetUserInfoByCtx 從上下文獲取使用者資訊
+func (s *sUser) GetUserInfoByCtx(ctx context.Context) (out *model.UserInfoOutput) {
 	payload := service.Auth().GetPayload(ctx)
 	out = new(model.UserInfoOutput)
 	out.Id = payload.Id
 	out.Username = payload.Username
+	out.Roles = payload.Roles
 	return out
+}
+
+// GetRoles 獲取角色列表
+func (s *sUser) GetRoles(ctx context.Context, id uint) (roles []*entity.Role, err error) {
+	var (
+		qRole  = dao.Role
+		qM2M   = dao.UserRole
+		result gdb.Result
+	)
+
+	result, err = qRole.Ctx(ctx).
+		LeftJoinOnFields(qM2M.Table(), qRole.Columns().Id, "=", qM2M.Columns().RoleId).
+		Where(do.UserRole{UserId: id}).All()
+	if err != nil {
+		return nil, err
+	}
+
+	// convert
+	if err = result.Structs(&roles); err != nil {
+		return nil, err
+	}
+
+	return roles, nil
 }

@@ -15,8 +15,10 @@ type (
 	IUser interface {
 		// GetUserByUsernamePassword 根據使用者名稱和密碼獲取使用者資訊
 		GetUserByUsernamePassword(ctx context.Context, in model.UserLoginInput) (user *entity.User, err error)
-		// GetUserInfo 獲取使用者資訊
-		GetUserInfo(ctx context.Context) (out *model.UserInfoOutput)
+		// GetUserInfoByCtx 從上下文獲取使用者資訊
+		GetUserInfoByCtx(ctx context.Context) (out *model.UserInfoOutput)
+		// GetRoles 獲取角色列表
+		GetRoles(ctx context.Context, id uint) (roles []*entity.Role, err error)
 	}
 )
 

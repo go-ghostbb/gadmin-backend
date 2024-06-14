@@ -25,6 +25,8 @@ type (
 		Login(ctx context.Context) (accessTokenStr, refreshTokenStr string, expire time.Time)
 		// Logout 登出
 		Logout(ctx context.Context)
+		// Refresh 刷新
+		Refresh(ctx context.Context, oldAccessToken, oldRefreshToken string) (accessTokenStr, refreshTokenStr string, expire time.Time)
 	}
 )
 

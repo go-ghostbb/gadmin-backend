@@ -8,6 +8,7 @@ type UserInfoReq struct {
 
 type UserInfoRes struct {
 	g.Meta   `mime:"application/json"`
-	Id       uint   `json:"id"`
-	Username string `json:"username"`
+	Id       uint     `json:"id"`
+	Username string   `json:"username"`
+	Roles    []string `json:"roles"`
 }

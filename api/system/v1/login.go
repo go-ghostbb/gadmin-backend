@@ -10,8 +10,10 @@ type LoginReq struct {
 	Username string `json:"username" v:"required"`
 	Password string `json:"password" v:"required"`
 }
+
 type LoginRes struct {
 	g.Meta       `mime:"application/json"`
+	Roles        []string  `json:"roles"`
 	AccessToken  string    `json:"accessToken"`
 	RefreshToken string    `json:"refreshToken"`
 	Expires      time.Time `json:"expires"`

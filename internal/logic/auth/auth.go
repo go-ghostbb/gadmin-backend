@@ -2,6 +2,7 @@ package auth
 
 import (
 	"context"
+	"errors"
 	"gadmin-backend/internal/model"
 	"gadmin-backend/internal/model/entity"
 	"gadmin-backend/internal/service"
@@ -95,10 +96,22 @@ func (s *sAuth) authenticator(ctx context.Context) (user *entity.User, err error
 }
 
 // payload
-func (s *sAuth) payloadFunc(user *entity.User) *claims.Access {
+func (s *sAuth) payloadFunc(ctx context.Context, user *entity.User) *claims.Access {
+	roles, err := service.User().GetRoles(ctx, user.Id)
+	if err != nil {
+		s.unauthorized(ctx, http.StatusInternalServerError, err)
+		return nil
+	}
+
+	roleArr := make([]string, 0)
+	for _, role := range roles {
+		roleArr = append(roleArr, role.Code)
+	}
+
 	return &claims.Access{
 		Id:       user.Id,
 		Username: user.Username,
+		Roles:    roleArr,
 	}
 }
 
@@ -139,7 +152,7 @@ func (s *sAuth) jwtFromHeader(r *ghttp.Request, key string) (string, error) {
 	return parts[1], nil
 }
 
-// 解析token
+// 解析accessToken
 func (s *sAuth) parseAccessToken(r *ghttp.Request) (*jwt.Token, error) {
 	token, err := s.jwtFromHeader(r, "Authorization")
 	if err != nil {
@@ -245,6 +258,7 @@ func (s *sAuth) GetIdentityKey(ctx context.Context) uint {
 
 // Login 登入
 func (s *sAuth) Login(ctx context.Context) (accessTokenStr, refreshTokenStr string, expire time.Time) {
+	r := g.RequestFromCtx(ctx)
 	user, err := s.authenticator(ctx)
 	if err != nil {
 		if gerror.Is(err, errorx.ErrFailedAuthentication) {
@@ -264,7 +278,7 @@ func (s *sAuth) Login(ctx context.Context) (accessTokenStr, refreshTokenStr stri
 
 	var (
 		accessToken  = jwt.New(jwt.GetSigningMethod(s.SigningAlgorithm))
-		accessClaims = s.payloadFunc(user)
+		accessClaims = s.payloadFunc(ctx, user)
 	)
 	accessClaims.Issuer = "gadmin"
 	accessClaims.ExpiresAt = jwt.NewNumericDate(expire)
@@ -298,6 +312,11 @@ func (s *sAuth) Login(ctx context.Context) (accessTokenStr, refreshTokenStr stri
 		return
 	}
 
+	// 寫入上下文
+	r.SetParam(TokenKey, accessTokenStr)
+	r.SetParam(PayloadKey, accessClaims)
+	r.SetParam(IdentityKey, user.Id)
+
 	return
 }
 
@@ -314,4 +333,85 @@ func (s *sAuth) Logout(ctx context.Context) {
 	if err != nil {
 		s.unauthorized(ctx, http.StatusInternalServerError, err)
 	}
+}
+
+// Refresh 刷新
+func (s *sAuth) Refresh(ctx context.Context, oldAccessToken, oldRefreshToken string) (accessTokenStr, refreshTokenStr string, expire time.Time) {
+	// 解析refresh token
+	refreshToken, err := jwt.ParseWithClaims(oldRefreshToken, &claims.Refresh{}, func(token *jwt.Token) (interface{}, error) {
+		return s.Key, nil
+	})
+	if err != nil {
+		if errors.Is(err, jwt.ErrTokenExpired) {
+			s.unauthorized(ctx, http.StatusOK, errorx.ErrExpiredToken)
+			return
+		}
+		s.unauthorized(ctx, http.StatusOK, errorx.ErrInvalidToken)
+		return
+	}
+
+	// 解析access token
+	accessToken, err := jwt.ParseWithClaims(oldAccessToken, &claims.Access{}, func(token *jwt.Token) (interface{}, error) {
+		return s.Key, nil
+	})
+	if err != nil {
+		if errors.Is(err, jwt.ErrTokenExpired) {
+			s.unauthorized(ctx, http.StatusOK, errorx.ErrExpiredToken)
+			return
+		}
+		s.unauthorized(ctx, http.StatusOK, errorx.ErrInvalidToken)
+		return
+	}
+
+	var (
+		accessClaims  = accessToken.Claims.(*claims.Access)
+		refreshClaims = refreshToken.Claims.(*claims.Refresh)
+	)
+
+	if accessClaims.Key != refreshClaims.Key {
+		s.unauthorized(ctx, http.StatusOK, errorx.ErrInvalidToken)
+		return
+	}
+
+	// 將舊的token放入黑名單
+	if err = s.setBlacklist(ctx, accessToken.Raw, accessClaims); err != nil {
+		s.unauthorized(ctx, http.StatusInternalServerError, err)
+		return
+	}
+
+	// accessToken 跟 refreshToken 對照key
+	key := guid.S()
+
+	// access token
+	accessToken = jwt.New(jwt.GetSigningMethod(s.SigningAlgorithm))
+	expire = s.AccessTimeFunc().Add(s.AccessTimeout)
+	accessClaims.ExpiresAt = jwt.NewNumericDate(expire)
+	accessClaims.IssuedAt = jwt.NewNumericDate(s.AccessTimeFunc())
+	accessClaims.Key = key
+	accessToken.Claims = accessClaims
+
+	accessTokenStr, err = s.signedString(accessToken)
+	if err != nil {
+		s.unauthorized(ctx, http.StatusInternalServerError, errorx.ErrFailedTokenCreation)
+		return
+	}
+
+	// refresh token
+	refreshToken = jwt.New(jwt.GetSigningMethod(s.SigningAlgorithm))
+	refreshExpire := s.RefreshTimeFunc().Add(s.RefreshTimeout)
+
+	refreshClaims.Issuer = "gadmin"
+	accessClaims.ExpiresAt = jwt.NewNumericDate(refreshExpire)
+	accessClaims.IssuedAt = jwt.NewNumericDate(s.RefreshTimeFunc())
+	accessClaims.Key = key
+
+	refreshToken.Claims = refreshClaims
+
+	refreshTokenStr, err = s.signedString(refreshToken)
+	if err != nil {
+		s.unauthorized(ctx, http.StatusInternalServerError, errorx.ErrFailedTokenCreation)
+		return
+	}
+
+	return
 }
